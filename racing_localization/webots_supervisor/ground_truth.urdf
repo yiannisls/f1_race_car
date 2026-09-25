@@ -1,0 +1,14 @@
+<?xml version="1.0" ?>
+<!--
+  ground_truth.urdf
+  webots_ros2_driver plugin descriptor for the Ground-Truth Supervisor robot.
+
+  This is loaded by a WebotsController in your launch file, attached to a small
+  Supervisor robot you add to the .wbt (see README_GROUND_TRUTH.md). It carries
+  no sensors; its only job is to run the GroundTruthDriver plugin.
+-->
+<robot name="ground_truth_supervisor">
+  <webots>
+    <plugin type="ground_truth_supervisor.GroundTruthDriver" />
+  </webots>
+</robot>

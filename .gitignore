@@ -1,0 +1,23 @@
+# ROS 2 build artifacts
+build/
+install/
+log/
+COLCON_IGNORE
+
+# Python cache & OS files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Large map binaries
+*.posegraph
+*.data
+
+# Third-party repositories
+rf2o_laser_odometry/

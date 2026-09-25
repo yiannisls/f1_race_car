@@ -1,0 +1,36 @@
+# slam_toolbox -- LOCALIZATION mode. Use AFTER you've mapped + serialized.
+# Loads the saved pose-graph and localizes against it (no new map building),
+# still publishing map->odom to correct EKF drift. This is what you run during
+# actual racing once the track is mapped.
+#
+# Set map_file_name to your serialized map (WITHOUT extension), e.g. the file
+# produced by /serialize_map -> "track_map" (creates track_map.data + .posegraph).
+
+slam_toolbox:
+  ros__parameters:
+    use_sim_time: false
+    odom_frame: odom
+    map_frame: map
+    base_frame: base_link
+    scan_topic: /yellow_car/scan
+    mode: localization
+
+    # Load the serialized pose-graph map made during mapping:
+    map_file_name: /home/turtle/maps/track_map     # <-- EDIT to your path (no extension)
+    # Start pose in the map frame [x, y, yaw]; set to your grid start line.
+    #map_start_pose: [-4.0, 4.0, -1.01]  # <-- EDIT to your start line (x, y, yaw)
+
+    solver_plugin: solver_plugins::CeresSolver
+    ceres_linear_solver: SPARSE_NORMAL_CHOLESKY
+    ceres_preconditioner: SCHUR_JACOBI
+    ceres_trust_strategy: LEVENBERG_MARQUARDT
+    ceres_dogleg_type: TRADITIONAL_DOGLEG
+
+    transform_publish_period: 0.02
+    resolution: 0.05
+    max_laser_range: 12.0
+    minimum_travel_distance: 0.2
+    minimum_travel_heading: 0.2
+    use_scan_matching: false
+    # rolling buffer of recent scans for localization
+    scan_buffer_size: 15

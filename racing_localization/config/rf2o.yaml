@@ -1,0 +1,19 @@
+# rf2o_laser_odometry (MAPIRlab ROS2 fork) parameters.
+#
+# CRITICAL: publish_tf MUST be false. The EKF is the only node allowed to
+# broadcast odom->base_link. If rf2o also publishes it, the TF tree breaks.
+#
+# rf2o needs a valid laser_frame -> base_link static transform to exist
+# (provided in the launch file / your URDF) so it can express motion in base_link.
+
+rf2o_laser_odometry:
+  ros__parameters:
+    use_sim_time: false
+    laser_scan_topic: /yellow_car/scan      # RAW scan (NOT scan_filtered: rf2o needs the walls!)
+    odom_topic: /yellow_car/odom_rf2o
+    publish_tf: false                       # <-- EKF owns the transform
+    base_frame_id: base_link
+    odom_frame_id: odom
+    init_pose_from_topic: ''                # start at (0,0,0)
+    freq: 20.0                              # Pi-5-friendly; raise to 30 if CPU allows
+    verbose: false

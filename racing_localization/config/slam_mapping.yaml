@@ -1,0 +1,79 @@
+# slam_toolbox -- MAPPING mode for the F1/10 Webots track.
+#
+# TF CHAIN (who publishes what):
+#   map -> odom         : slam_toolbox  (THIS node)
+#   odom -> base_link   : robot_localization EKF
+#   base_link -> laser  : static (URDF / launch)
+# slam_toolbox corrects the EKF's accumulated drift by publishing map->odom.
+#
+# SCAN: use RAW /yellow_car/scan (walls intact). NOT /scan_filtered -- SLAM must
+# see the static walls to build the map and to scan-match against it.
+#
+# Tuned for a small race track on a Pi 5: modest resolution, generous loop
+# closure so a single lap closes cleanly.
+
+slam_toolbox:
+  ros__parameters:
+    use_sim_time: false
+
+    # --- frames & topics ---
+    odom_frame: odom
+    map_frame: map
+    base_frame: base_link
+    scan_topic: /yellow_car/scan
+    mode: mapping                      # switch to "localization" after you have a map
+
+    # --- general ---
+    solver_plugin: solver_plugins::CeresSolver
+    ceres_linear_solver: SPARSE_NORMAL_CHOLESKY
+    ceres_preconditioner: SCHUR_JACOBI
+    ceres_trust_strategy: LEVENBERG_MARQUARDT
+    ceres_dogleg_type: TRADITIONAL_DOGLEG
+    ceres_loss_function: None
+
+    debug_logging: false
+    throttle_scans: 1                  # process every scan (sim is only 10 Hz)
+    transform_publish_period: 0.02     # 50 Hz map->odom, matches EKF rate
+    map_update_interval: 1.0           # rebuild occupancy grid every 1 s (Pi-friendly)
+    resolution: 0.05                   # 5 cm/cell -- good for a tight track
+    max_laser_range: 12.0              # clamp; your sim lidar range
+    minimum_time_interval: 0.2
+    transform_timeout: 0.2
+    tf_buffer_duration: 30.0
+    stack_size_to_use: 40000000
+    enable_interactive_mode: false
+
+    # --- scan matching (correlative + ceres refinement) ---
+    use_scan_matching: false
+    use_scan_barycenter: true
+    minimum_travel_distance: 0.1       # add a node every 0.2 m...
+    minimum_travel_heading: 0.1        # ...or 0.2 rad turn (corners on a track)
+    scan_buffer_size: 20
+    scan_buffer_maximum_scan_distance: 12.0
+    link_match_minimum_response_fine: 0.12
+    link_scan_maximum_distance: 1.5
+    do_loop_closing: true              # ESSENTIAL: closes the lap, kills drift
+    loop_search_maximum_distance: 4.0
+    loop_match_minimum_chain_size: 8
+    loop_match_maximum_variance_coarse: 3.0
+    loop_match_minimum_response_coarse: 0.35
+    loop_match_minimum_response_fine: 0.45
+
+    # --- correlation search windows ---
+    correlation_search_space_dimension: 0.5
+    correlation_search_space_resolution: 0.01
+    correlation_search_space_smear_deviation: 0.1
+    loop_search_space_dimension: 8.0
+    loop_search_space_resolution: 0.05
+    loop_search_space_smear_deviation: 0.03
+
+    # --- scan matcher penalties ---
+    distance_variance_penalty: 3.0
+    angle_variance_penalty: 5.0
+    fine_search_angle_offset: 0.00349
+    coarse_search_angle_offset: 0.0174
+    coarse_angle_resolution: 0.0174
+    minimum_angle_penalty: 0.95
+    minimum_distance_penalty: 1.0
+    use_response_expansion: true
+

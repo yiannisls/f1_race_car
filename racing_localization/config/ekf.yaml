@@ -1,0 +1,130 @@
+# robot_localization EKF for F1/10 Webots sim (no IMU, no wheel speed yet).
+#
+# CURRENT SIM REALITY: /yellow_car/current_speed is dead and there is no IMU.
+# So rf2o laser odometry is the SOLE motion source. It already measures real
+# forward velocity (vx) and heading rate (vyaw) from scan-matching -> we let it
+# drive the whole filter. NO fabricated/commanded data enters the EKF.
+#
+# Fuses:
+#   odom1 = /yellow_car/odom_rf2o    -> vx + vy + vyaw  (all motion)
+#   odom0 = /yellow_car/odom_wheel   -> DISABLED for now (see odom0_config all-false)
+#                                       Re-enable vx here the moment the sim
+#                                       publishes a real /yellow_car/current_speed.
+#
+# Why keep the EKF if there's only one source? It runs the predictor at a steady
+# 50 Hz (smoothing rf2o's bursty ~10 Hz into a continuous TF), enforces 2D mode,
+# and gives a zero-rewire slot for IMU (imu0) and wheel vx (odom0) later.
+#
+# This EKF is the SINGLE owner of the odom->base_link transform.
+# rf2o must run with publish_tf:=false.
+#
+# _config bool vector order (15):
+#   [ X,  Y,  Z,
+#     roll, pitch, yaw,
+#     X',  Y',  Z',           <- velocities (body frame)
+#     roll', pitch', yaw',
+#     X'', Y'', Z'' ]         <- accelerations
+
+
+/**:
+  ros__parameters:
+    use_sim_time: false          # Webots: keep ALL nodes on sim time or ALL off
+    frequency: 50.0             # state publish rate; Pi-5-friendly
+    sensor_timeout: 0.1
+    two_d_mode: true            # planar racing: zero out Z/roll/pitch
+    publish_tf: true            # <-- EKF owns odom->base_link
+    publish_acceleration: false
+
+
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_link
+    world_frame: odom           # fusing only continuous (no absolute) -> world = odom
+
+
+    # transform tolerances help on a loaded Pi; harmless in sim
+    transform_time_offset: 0.0
+    transform_timeout: 0.0
+
+
+    # ---- odom0: wheel odometry -- DISABLED (no measured speed from sim) --------
+    # All-false = the EKF ignores this source entirely. The wheel node may stay
+    # off. When /yellow_car/current_speed comes back, flip the vx slot (index 6)
+    # to true and relaunch the wheel node -- nothing else changes.
+    odom0: /yellow_car/odom_wheel
+    odom0_config: [false, false, false,
+                   false, false, false,
+                   true, false, false,
+                   false, false, false,
+                   false, false, false]
+    odom0_differential: false
+    odom0_relative: false
+    odom0_queue_size: 5
+    odom0_twist_rejection_threshold: 1.0
+    odom0_nodelay: true
+
+
+    # ---- odom1: rf2o laser odometry -- SOLE MOTION SOURCE ----------------------
+    # Take vx, vy, and vyaw. With wheel speed dead, rf2o's measured forward
+    # velocity (from scan-matching) is what anchors scale; its yaw rate anchors
+    # heading. This is the entire motion model right now.
+    odom1: /yellow_car/odom_rf2o
+    odom1_config: [false, false, false,
+                   false, false, false,
+                   true,  false,  false,
+                   false, false, false,
+                   false, false, false]
+    odom1_differential: false
+    odom1_relative: false
+    odom1_queue_size: 5
+    odom1_twist_rejection_threshold: 5.0
+    odom1_nodelay: true
+
+    # joint odom: trusted FORWARD SPEED (and optionally its yaw rate)
+    odom2: /yellow_car/odom_joint
+    odom2_config: [false, false, false,
+                   false, false, false,
+                   true,  false, false,
+                   false, false, true,
+                   false, false, false]
+    odom2_differential: false
+    odom2_relative: false
+    odom2_queue_size: 5
+    odom2_twist_rejection_threshold: 5.0
+    odom2_nodelay: true
+
+    # ---- Process noise (Q): how much we trust the motion model between updates -
+    # Order matches the 15-state vector. Slightly higher on yaw so the filter
+    # stays responsive to rf2o heading corrections in fast corners.
+    process_noise_covariance: [0.02, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,   0.0,   0.0,   0.0,  0.0,  0.0,
+                               0.0,  0.02, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,   0.0,   0.0,   0.0,  0.0,  0.0,
+                               0.0,  0.0,  0.01, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,   0.0,   0.0,   0.0,  0.0,  0.0,
+                               0.0,  0.0,  0.0,  0.01, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,   0.0,   0.0,   0.0,  0.0,  0.0,
+                               0.0,  0.0,  0.0,  0.0,  0.01, 0.0,  0.0,  0.0,  0.0,  0.0,   0.0,   0.0,   0.0,  0.0,  0.0,
+                               0.0,  0.0,  0.0,  0.0,  0.0,  0.05, 0.0,  0.0,  0.0,  0.0,   0.0,   0.0,   0.0,  0.0,  0.0,
+                               0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.05, 0.0,  0.0,  0.0,   0.0,   0.0,   0.0,  0.0,  0.0,
+                               0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.05, 0.0,  0.0,   0.0,   0.0,   0.0,  0.0,  0.0,
+                               0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.02, 0.0,   0.0,   0.0,   0.0,  0.0,  0.0,
+                               0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.01,  0.0,   0.0,   0.0,  0.0,  0.0,
+                               0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,   0.01,  0.0,   0.0,  0.0,  0.0,
+                               0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,   0.0,   0.10,  0.0,  0.0,  0.0,
+                               0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,   0.0,   0.0,   0.01, 0.0,  0.0,
+                               0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,   0.0,   0.0,   0.0,  0.01, 0.0,
+                               0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,   0.0,   0.0,   0.0,  0.0,  0.01]
+
+
+    initial_estimate_covariance: [1.0e-9, 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                  0.0,    1.0e-9, 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                  0.0,    0.0,    1.0e-9, 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                  0.0,    0.0,    0.0,    1.0e-9, 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                  0.0,    0.0,    0.0,    0.0,    1.0e-9, 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                  0.0,    0.0,    0.0,    0.0,    0.0,    1.0e-9, 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                  0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    1.0e-9, 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                  0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    1.0e-9, 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                  0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    1.0e-9, 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                  0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    1.0e-9, 0.0,    0.0,    0.0,    0.0,    0.0,
+                                  0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    1.0e-9, 0.0,    0.0,    0.0,    0.0,
+                                  0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    1.0e-9, 0.0,    0.0,    0.0,
+                                  0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    1.0e-9, 0.0,    0.0,
+                                  0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    1.0e-9, 0.0,
+                                  0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    1.0e-9]
